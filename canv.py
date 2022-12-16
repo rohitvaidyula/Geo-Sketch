@@ -6,6 +6,7 @@ import random
 import os
 import numpy as np
 import scipy as sp
+import math
 
 class MainWindow():
     def __init__(self, root):
@@ -14,7 +15,8 @@ class MainWindow():
         self.root.geometry("1200x850")
         self.thisStroke = []
         self.strokes = []
-        self.points = pd.DataFrame(columns=['x', 'y', 'time'])
+        self.statesSubmitted = []
+        self.points = pd.DataFrame(columns=['stroke', 'x', 'y', 'time'])
         self.canvas = Canvas(self.root, width=1200, height=784, bg="white")
         self.canvas.bind("<Button-1>", self.paint)
         self.canvas.bind("<B1-Motion>", self.paint)
@@ -23,15 +25,14 @@ class MainWindow():
         self.background = Image.open("states/border.png")
         self.img = ImageTk.PhotoImage(self.background)
         self.imgtag = self.canvas.create_image(0, 0, anchor=NW, image=self.img)
-        self.undoButton = Button(self.root, text="Undo", command=self.undoCallback)
-        self.undoButton.pack(side=LEFT, padx=10, pady=10)
-        self.clearButton = Button(self.root, text="Clear", command=self.clearCallback)
-        self.clearButton.pack(side=LEFT, padx=10, pady=10)
-        self.rollButton = Button(self.root, text="Roll", command=self.rollCallback)
-        self.rollButton.pack(side=LEFT, padx=10, pady=10)
+        self.undoStrokeButton = Button(self.root, text="Undo Stroke", command=self.undoStrokeCallback)
+        self.undoStrokeButton.pack(side=LEFT, padx=10, pady=10)
+        self.undoStateButton = Button(self.root, text="Undo State", command=self.undoStateCallback)
+        self.undoStateButton.pack(side=LEFT, padx=10, pady=10)
         self.submitButton = Button(self.root, text="Submit", command=self.submitCallback)
         self.submitButton.pack(side=LEFT, padx=10, pady=10)
         self.start = 0
+        self.strokeCount = 1
 
         self.states = ['alabama', 'alaska', 'arizona', 'arkansas', 'california', 
           'colorado', 'connecticut', 'delaware', 'florida', 
@@ -57,40 +58,70 @@ class MainWindow():
         stroke = self.canvas.create_line(x1, y1, x2, y2, fill="black", width=3)
         self.thisStroke.append(stroke)
         now = int(time.time() * 1000)
-        self.points.loc[len(self.points)] = [event.x, event.y, now - self.start]
+        self.points.loc[len(self.points)] = [self.strokeCount, event.x, event.y, now - self.start]
     
     def log_stroke(self, stroke):
+        self.strokeCount += 1
         self.strokes.append(self.thisStroke)
         self.thisStroke = []
 
-    def undoCallback(self):
-        print(self.strokes)
-        print(self.points)
+    def undoStrokeCallback(self):
+        # remove last stroke from points by stroke number
+        self.points.drop(self.points[self.points['stroke'] == self.strokeCount - 1].index, inplace=True)
         if len(self.strokes) > 0:
             for point in self.strokes.pop():
                 self.canvas.delete(point)
+            self.strokeCount -= 1
+        print(self.strokes)
+        print(self.points)
 
-    def rollCallback(self):
-        i = random.randint(0, len(self.states) - 1)
-        self.background.paste(Image.open("states/" + self.states[i] + '.png'), (0, 0), Image.open("states/" + self.states[i] + '.png'))
+    def undoStateCallback(self):
+        # peek at image history and display with PIL.show
+        self.statesSubmitted.pop()
+        print(self.statesSubmitted)
+        self.background = Image.open("states/border.png")
         self.img = ImageTk.PhotoImage(self.background)
+        for state in self.statesSubmitted:
+            self.background.paste(Image.open("states/" + state + '.png'), (0, 0), Image.open("states/" + state + '.png'))
+            self.img = ImageTk.PhotoImage(self.background)
         self.canvas.itemconfig(self.imgtag, image=self.img)
-        self.start = int(time.time() * 1000)
 
     def clearCallback(self):
         self.canvas.delete("all")
         self.points.drop(self.points.index, inplace=True)
-        print(self.points)
 
     def submitCallback(self):
+        if len(self.points) == 0:
+            return
         _, scores = self.recognize_gesture(self.points, self.templates)
-        print(scores)
+        # print(scores)
 
         # get index of highest score
         index = scores.index(min(scores))
-        stateLabel = Label(self.root, text=self.states[index])
-        stateLabel.pack(side=LEFT, padx=10, pady=10)
+        grade = 100 - 10 * math.log(scores[index] + 1)
+        # ternary operators to make sure grade is between 0 and 100
+        grade = grade if grade < 100 else 100
+        grade = grade if grade > 0 else 0
+        print("Grade: " + str(grade))
+        print("Score: " + str(scores[index]))
+        self.place_template(Image.open("states/" + self.states[index] + '.png'))
+        self.statesSubmitted.append(self.states[index])
         # print(self.states[index])
+
+    # Define the function for clearing the strokes list and pasting an input image on the canvas
+    def place_template(self, template):
+        # Pop each stroke from the strokes list and drop each point in stroke from the canvas
+        while len(self.strokes) > 0:
+            for point in self.strokes.pop():
+                self.canvas.delete(point)
+        
+        # Drop all points from the points dataframe
+        self.points.drop(self.points.index, inplace=True)
+
+        # Paste the input template on the canvas
+        self.background.paste(template, (0, 0), template)
+        self.img = ImageTk.PhotoImage(self.background)
+        self.canvas.itemconfig(self.imgtag, image=self.img)
 
     # Define the function for gesture recognition
     def recognize_gesture(self, point_cloud, gesture_templates):
@@ -124,7 +155,7 @@ class MainWindow():
         distances = sp.spatial.distance.cdist(point_cloud, template)
         
         # Compute the Hausdorff distance as the maximum of the minimum distances from each point in the point cloud to the template
-        hausdorff_distance = np.max(np.min(distances, axis=1))
+        hausdorff_distance = np.average(np.min(distances, axis=0))
         
         return hausdorff_distance
 
