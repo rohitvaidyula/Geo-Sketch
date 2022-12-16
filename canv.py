@@ -12,27 +12,34 @@ class MainWindow():
     def __init__(self, root):
         self.root = root
         self.root.title("GeoSketch")
-        self.root.geometry("1200x850")
+        self.root.geometry("1360x835")
         self.thisStroke = []
         self.strokes = []
         self.statesSubmitted = []
+        self.grades = []
         self.points = pd.DataFrame(columns=['stroke', 'x', 'y', 'time'])
-        self.canvas = Canvas(self.root, width=1200, height=784, bg="white")
+        self.canvas = Canvas(self.root, width=1200, height=800, bg="white")
         self.canvas.bind("<Button-1>", self.paint)
         self.canvas.bind("<B1-Motion>", self.paint)
         self.canvas.bind("<ButtonRelease-1>", self.log_stroke)
-        self.canvas.pack()
         self.background = Image.open("states/border.png")
         self.img = ImageTk.PhotoImage(self.background)
         self.imgtag = self.canvas.create_image(0, 0, anchor=NW, image=self.img)
-        self.undoStrokeButton = Button(self.root, text="Undo Stroke", command=self.undoStrokeCallback)
-        self.undoStrokeButton.pack(side=LEFT, padx=10, pady=10)
+        self.gradesDisplay = Listbox(self.root, width=25, height=50)
         self.undoStateButton = Button(self.root, text="Undo State", command=self.undoStateCallback)
-        self.undoStateButton.pack(side=LEFT, padx=10, pady=10)
+        self.undoStrokeButton = Button(self.root, text="Undo Stroke", command=self.undoStrokeCallback)
         self.submitButton = Button(self.root, text="Submit", command=self.submitCallback)
-        self.submitButton.pack(side=LEFT, padx=10, pady=10)
+        self.averageLabel = Label(self.root, text="Average: ")
         self.start = 0
         self.strokeCount = 1
+
+        # place widgets in grid
+        self.canvas.grid(row=0, column=0, columnspan=24, rowspan=16)
+        self.gradesDisplay.grid(row=0, column=24, columnspan=2, rowspan=16)
+        self.undoStateButton.grid(row=16, column=0)
+        self.undoStrokeButton.grid(row=16, column=1)
+        self.submitButton.grid(row=16, column=2)
+        self.averageLabel.grid(row=16, column=24)
 
         self.states = ['alabama', 'alaska', 'arizona', 'arkansas', 'california', 
           'colorado', 'connecticut', 'delaware', 'florida', 
@@ -51,6 +58,14 @@ class MainWindow():
             if file == 'border.csv': continue
             if file.endswith(".csv"):
                 self.templates.append(pd.read_csv("templates/" + file))
+
+    def updateAverage(self):
+        if len(self.grades) == 0:
+            self.averageLabel.config(text="Average: ")
+            return
+        avg = np.average(self.grades)
+        self.averageLabel.config(text="Average: " + str(round(avg, 2)))
+
 
     def paint(self, event):
         x1, y1 = (event.x - 0.5), (event.y - 0.5)
@@ -78,17 +93,15 @@ class MainWindow():
     def undoStateCallback(self):
         # peek at image history and display with PIL.show
         self.statesSubmitted.pop()
-        print(self.statesSubmitted)
+        self.gradesDisplay.delete(END)
         self.background = Image.open("states/border.png")
         self.img = ImageTk.PhotoImage(self.background)
         for state in self.statesSubmitted:
             self.background.paste(Image.open("states/" + state + '.png'), (0, 0), Image.open("states/" + state + '.png'))
             self.img = ImageTk.PhotoImage(self.background)
         self.canvas.itemconfig(self.imgtag, image=self.img)
-
-    def clearCallback(self):
-        self.canvas.delete("all")
-        self.points.drop(self.points.index, inplace=True)
+        self.grades.pop()
+        self.updateAverage()
 
     def submitCallback(self):
         if len(self.points) == 0:
@@ -98,7 +111,19 @@ class MainWindow():
 
         # get index of highest score
         index = scores.index(min(scores))
-        grade = 100 - 10 * math.log(scores[index] + 1)
+        if scores[index] < 2:
+            grade = 100 - (10 * math.log(scores[index]))
+        elif scores[index] < 5:
+            grade = 100 - (12 * math.log(scores[index]))
+        elif scores[index] < 10:
+            grade = 100 - (15 * math.log(scores[index]))
+        elif scores[index] < 20:
+            grade = 100 - (20 * math.log(scores[index]))
+        elif scores[index] < 50:
+            grade = 100 - (30 * math.log(scores[index]))
+        else:
+            grade = 100 - (50 * math.log(scores[index]))
+
         # ternary operators to make sure grade is between 0 and 100
         grade = grade if grade < 100 else 100
         grade = grade if grade > 0 else 0
@@ -106,7 +131,10 @@ class MainWindow():
         print("Score: " + str(scores[index]))
         self.place_template(Image.open("states/" + self.states[index] + '.png'))
         self.statesSubmitted.append(self.states[index])
-        # print(self.states[index])
+        # insert state and grade into grades list with capitalization on first letter, and grade rounded to 2 decimal places
+        self.gradesDisplay.insert(END, self.states[index].capitalize() + ": " + str(round(grade, 2)))
+        self.grades.append(grade)
+        self.updateAverage()
 
     # Define the function for clearing the strokes list and pasting an input image on the canvas
     def place_template(self, template):
@@ -136,7 +164,7 @@ class MainWindow():
         # Iterate through each gesture template
         for gesture_template in gesture_templates:
             # Compute the similarity between the point cloud and the gesture template using some similarity measure (e.g. Hausdorff distance)
-            score = self.compute_hausdorff_distance(point_cloud, gesture_template)
+            score = self.compute_distance(point_cloud, gesture_template)
             
             # Add the gesture and its score to the list of recognized gestures
             recognized_gestures.append(gesture_template)
@@ -146,7 +174,7 @@ class MainWindow():
         return recognized_gestures, scores
 
     # Define the function for computing the Hausdorff distance between two point clouds
-    def compute_hausdorff_distance(self, point_cloud, template):
+    def compute_distance(self, point_cloud, template):
         # Convert the point cloud and template to numpy arrays
         point_cloud = np.array(point_cloud)
         template = np.array(template)
