@@ -1,4 +1,5 @@
 from tkinter import *
+from tkinter import messagebox
 import time
 import pandas as pd
 from PIL import Image, ImageTk
@@ -26,8 +27,12 @@ class MainWindow():
         self.img = ImageTk.PhotoImage(self.background)
         self.imgtag = self.canvas.create_image(0, 0, anchor=NW, image=self.img)
         self.gradesDisplay = Listbox(self.root, width=25, height=50)
-        self.undoStateButton = Button(self.root, text="Undo State", command=self.undoStateCallback)
+        # add dropdown menu for selecting mode: states or rivers
+        self.mode = StringVar(self.root)
+        self.mode.set("Select Mode")
+        self.modeMenu = OptionMenu(self.root, self.mode, "States", "Rivers")
         self.undoStrokeButton = Button(self.root, text="Undo Stroke", command=self.undoStrokeCallback)
+        self.undoSubmitButton = Button(self.root, text="Undo Submit", command=self.undoSubmitCallback)
         self.submitButton = Button(self.root, text="Submit", command=self.submitCallback)
         self.averageLabel = Label(self.root, text="Average: ")
         self.start = 0
@@ -36,9 +41,10 @@ class MainWindow():
         # place widgets in grid
         self.canvas.grid(row=0, column=0, columnspan=24, rowspan=16)
         self.gradesDisplay.grid(row=0, column=24, columnspan=2, rowspan=16)
-        self.undoStateButton.grid(row=16, column=0)
+        self.modeMenu.grid(row=16, column=0)
         self.undoStrokeButton.grid(row=16, column=1)
-        self.submitButton.grid(row=16, column=2)
+        self.undoSubmitButton.grid(row=16, column=2)
+        self.submitButton.grid(row=16, column=23)
         self.averageLabel.grid(row=16, column=24)
 
         self.states = ['alabama', 'alaska', 'arizona', 'arkansas', 'california',
@@ -52,12 +58,24 @@ class MainWindow():
           'southcarolina', 'southdakota', 'tennessee', 'texas', 'utah',
           'vermont', 'virginia', 'washington', 'westvirginia', 'wisconsin', 'wyoming']
 
+        self.rivers = ['alabama_river', 'arkansas_river', 'brazos_river', 'canadian_river', 'chattahoochee_river',
+                       'colorado_river', 'columbia_river', 'connecticut_river', 'delaware_river', 'gila_river',
+                       'green_river', 'hudson_river', 'illinois_river', 'mississippi_river', 'missouri_river',
+                       'ohio_river', 'pecos_river', 'platte_river', 'potomac_river', 'red_river',
+                       'red_river_(North)', 'rio_grande_river', 'sacramento_river', 'san_joquin_river', 'savannah_river',
+                       'snake_river', 'susquehanna_river', 'tennessee_river', 'wabash_river']
+
         # go through templates folder and store csvs in list of dataframes
-        self.templates = []
-        for file in os.listdir("templates"):
+        self.state_templates = []
+        for file in os.listdir("state_templates"):
             if file == 'border.csv': continue
             if file.endswith(".csv"):
-                self.templates.append(pd.read_csv("templates/" + file))
+                self.state_templates.append(pd.read_csv("state_templates/" + file))
+
+        self.river_templates = []
+        for file in os.listdir('river_templates'):
+            if file.endswith('.csv'):
+                self.river_templates.append(pd.read_csv('river_templates/' + file))
 
     def updateAverage(self):
         if len(self.grades) == 0:
@@ -65,7 +83,6 @@ class MainWindow():
             return
         avg = np.average(self.grades)
         self.averageLabel.config(text="Average: " + str(round(avg, 2)))
-
 
     def paint(self, event):
         x1, y1 = (event.x - 0.5), (event.y - 0.5)
@@ -90,14 +107,17 @@ class MainWindow():
         print(self.strokes)
         print(self.points)
 
-    def undoStateCallback(self):
+    def undoSubmitCallback(self):
         # peek at image history and display with PIL.show
         self.statesSubmitted.pop()
         self.gradesDisplay.delete(END)
         self.background = Image.open("states/border.png")
         self.img = ImageTk.PhotoImage(self.background)
         for state in self.statesSubmitted:
-            self.background.paste(Image.open("states/" + state + '.png'), (0, 0), Image.open("states/" + state + '.png'))
+            if 'river' in state:
+                self.background.paste(Image.open("rivers/" + state + '.png'), (0, 0), Image.open("rivers/" + state + '.png'))
+            else:
+                self.background.paste(Image.open("states/" + state + '.png'), (0, 0), Image.open("states/" + state + '.png'))
             self.img = ImageTk.PhotoImage(self.background)
         self.canvas.itemconfig(self.imgtag, image=self.img)
         self.grades.pop()
@@ -106,33 +126,44 @@ class MainWindow():
     def submitCallback(self):
         if len(self.points) == 0:
             return
-        _, scores = self.recognize_gesture(self.points, self.templates)
+        # if mode is 'Select Mode' then alert user to select mode
+        if self.mode.get() == 'Select Mode':
+            messagebox.showwarning("Mode Error", "Please select a mode")
+            return
+        elif self.mode.get() == 'States':
+            _, scores = self.recognize_gesture(self.points, self.state_templates)
+        else:
+            _, scores = self.recognize_gesture(self.points, self.river_templates)
         # print(scores)
 
         # get index of highest score
         index = scores.index(min(scores))
-        if scores[index] < 2:
-            grade = 100 - (10 * math.log(scores[index]))
-        elif scores[index] < 5:
-            grade = 100 - (12 * math.log(scores[index]))
-        elif scores[index] < 10:
-            grade = 100 - (15 * math.log(scores[index]))
-        elif scores[index] < 20:
-            grade = 100 - (20 * math.log(scores[index]))
-        elif scores[index] < 50:
-            grade = 100 - (30 * math.log(scores[index]))
-        else:
-            grade = 100 - (50 * math.log(scores[index]))
+        grade = min((100-2*scores[index]), (100-20*math.log(scores[index])))
 
         # ternary operators to make sure grade is between 0 and 100
         grade = grade if grade < 100 else 100
         grade = grade if grade > 0 else 0
+
+        if self.mode.get() == 'Rivers':
+            grade = (grade ** 0.5) * 10
         print("Grade: " + str(grade))
         print("Score: " + str(scores[index]))
-        self.place_template(Image.open("states/" + self.states[index] + '.png'))
-        self.statesSubmitted.append(self.states[index])
-        # insert state and grade into grades list with capitalization on first letter, and grade rounded to 2 decimal places
-        self.gradesDisplay.insert(END, self.states[index].capitalize() + ": " + str(round(grade, 2)))
+
+        if self.mode.get() == 'States':
+            self.place_template(Image.open("states/" + self.states[index] + '.png'))
+            self.statesSubmitted.append(self.states[index])
+            # insert state and grade into grades list with capitalization on first letter, and grade rounded to 2 decimal places
+            # split states[index] by _ and capitalize each word
+            self.gradesDisplay.insert(END, ' '.join([word.capitalize() for word in self.states[index].split('_')]) + ": " + str(round(grade, 2)))
+            # self.gradesDisplay.insert(END, self.states[index].capitalize() + ": " + str(round(grade, 2)))
+        else:
+            self.place_template(Image.open("rivers/" + self.rivers[index] + '.png'))
+            self.statesSubmitted.append(self.rivers[index])
+            # insert state and grade into grades list with capitalization on first letter, and grade rounded to 2 decimal places
+            # split rivers[index] by _ and capitalize each word
+            self.gradesDisplay.insert(END, ' '.join([word.capitalize() for word in self.rivers[index].split('_')]) + ": " + str(round(grade, 2)))
+            # self.gradesDisplay.insert(END, self.rivers[index].capitalize() + ": " + str(round(grade, 2)))
+
         self.grades.append(grade)
         self.updateAverage()
 
@@ -147,7 +178,10 @@ class MainWindow():
         self.points.drop(self.points.index, inplace=True)
 
         # Paste the input template on the canvas
-        self.background.paste(template, (0, 0), template)
+        if self.mode.get() == 'States':
+            self.background.paste(template, (0, 0), template)
+        else:
+            self.background.paste(template, (0, 0), template)
         self.img = ImageTk.PhotoImage(self.background)
         self.canvas.itemconfig(self.imgtag, image=self.img)
 
