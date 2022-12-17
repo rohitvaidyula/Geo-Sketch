@@ -242,7 +242,7 @@ def practice_mode():
         prev = event
     def draw(event):
         global prev
-        C.create_line(prev.x, prev.y, event.x, event.y, fill="black", width=5)
+        C.create_line(prev.x, prev.y, event.x, event.y, fill="red", width=5)
         prev = event
     C.bind("<Button-1>", x_and_y)
     C.bind("<B1-Motion>", draw)
