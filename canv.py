@@ -41,15 +41,15 @@ class MainWindow():
         self.submitButton.grid(row=16, column=2)
         self.averageLabel.grid(row=16, column=24)
 
-        self.states = ['alabama', 'alaska', 'arizona', 'arkansas', 'california', 
-          'colorado', 'connecticut', 'delaware', 'florida', 
-          'georgia', 'hawaii', 'idaho', 'illinois', 'indiana', 
-          'iowa', 'kansas', 'kentucky', 'louisianna', 'maine', 
-          'maryland', 'massachusetts', 'michigan', 'minnesota', 'mississippi', 
-          'missouri', 'montana', 'nebraska', 'nevada', 'newhampshire', 
-          'newjersey', 'newmexico', 'newyork', 'northcarolina', 'northdakota', 
-          'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhodeisland', 
-          'southcarolina', 'southdakota', 'tennessee', 'texas', 'utah', 
+        self.states = ['alabama', 'alaska', 'arizona', 'arkansas', 'california',
+          'colorado', 'connecticut', 'delaware', 'florida',
+          'georgia', 'hawaii', 'idaho', 'illinois', 'indiana',
+          'iowa', 'kansas', 'kentucky', 'louisianna', 'maine',
+          'maryland', 'massachusetts', 'michigan', 'minnesota', 'mississippi',
+          'missouri', 'montana', 'nebraska', 'nevada', 'newhampshire',
+          'newjersey', 'newmexico', 'newyork', 'northcarolina', 'northdakota',
+          'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhodeisland',
+          'southcarolina', 'southdakota', 'tennessee', 'texas', 'utah',
           'vermont', 'virginia', 'washington', 'westvirginia', 'wisconsin', 'wyoming']
 
         # go through templates folder and store csvs in list of dataframes
@@ -74,7 +74,7 @@ class MainWindow():
         self.thisStroke.append(stroke)
         now = int(time.time() * 1000)
         self.points.loc[len(self.points)] = [self.strokeCount, event.x, event.y, now - self.start]
-    
+
     def log_stroke(self, stroke):
         self.strokeCount += 1
         self.strokes.append(self.thisStroke)
@@ -142,7 +142,7 @@ class MainWindow():
         while len(self.strokes) > 0:
             for point in self.strokes.pop():
                 self.canvas.delete(point)
-        
+
         # Drop all points from the points dataframe
         self.points.drop(self.points.index, inplace=True)
 
@@ -156,20 +156,20 @@ class MainWindow():
         # Convert the point cloud and gesture templates to numpy arrays
         point_cloud = point_cloud[['x', 'y']].to_numpy()
         gesture_templates = [template[['x', 'y']].to_numpy() for template in gesture_templates]
-        
+
         # Initialize the list of recognized gestures and their scores
         recognized_gestures = []
         scores = []
-        
+
         # Iterate through each gesture template
         for gesture_template in gesture_templates:
             # Compute the similarity between the point cloud and the gesture template using some similarity measure (e.g. Hausdorff distance)
             score = self.compute_distance(point_cloud, gesture_template)
-            
+
             # Add the gesture and its score to the list of recognized gestures
             recognized_gestures.append(gesture_template)
             scores.append(score)
-            
+
         # Return the list of recognized gestures and their scores
         return recognized_gestures, scores
 
@@ -178,15 +178,49 @@ class MainWindow():
         # Convert the point cloud and template to numpy arrays
         point_cloud = np.array(point_cloud)
         template = np.array(template)
-        
+
         # Compute the Euclidean distance between each point in the point cloud and each point in the template
         distances = sp.spatial.distance.cdist(point_cloud, template)
-        
+
         # Compute the Hausdorff distance as the maximum of the minimum distances from each point in the point cloud to the template
         hausdorff_distance = np.average(np.min(distances, axis=0))
-        
+
         return hausdorff_distance
 
-root = Tk()
-MainWindow(root)
-root.mainloop()
+
+starter_window = Tk()
+def main_paper():
+    starter_window.destroy()
+    root = Tk()
+    MainWindow(root)
+    root.mainloop()
+def practice_mode():
+    p_mode = Toplevel(starter_window)
+    p_mode.title("Practice Mode")
+    p_mode.geometry("1200x784")
+    C = Canvas(p_mode, bg="white", height=784, width=1200)
+    p_image = PhotoImage(file = "C:/Users/vaidy/OneDrive/Desktop/Geo-Sketch/practice.png")
+    C.create_image(0, 0, anchor = NW, image = p_image)
+    C.pack(fill=BOTH, expand=1)
+
+    def x_and_y(event):
+        global prev
+        prev = event
+    def draw(event):
+        global prev
+        C.create_line(prev.x, prev.y, event.x, event.y, fill="black", width=5)
+        prev = event
+    C.bind("<Button-1>", x_and_y)
+    C.bind("<B1-Motion>", draw)
+    p_mode.mainloop()
+
+starter_window.title("Geo-Sketch")
+starter_window.geometry("1200x800")
+starter_window.overrideredirect
+window_label = Label(starter_window, text= "Welcome to GEO-SKETCH!", font=('Comic Sans MS', 30)).pack(pady=20)
+small_label = Label(starter_window, text= "Choose one of the options below!", font=('Comic Sans MS', 16)).pack(pady=20)
+free_draw = Button(starter_window, text = "Free Draw Mode", command=main_paper)
+practice = Button(starter_window, text = "Practice Mode", command=practice_mode)
+practice.pack(side=TOP)
+free_draw.pack(side=TOP)
+starter_window.mainloop()
